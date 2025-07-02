@@ -20,6 +20,10 @@ public enum ErrorCode {
 
     // 카드 관련 에러 코드
     INVALID_AUTHORIZATION(401, "K_001", "Authorization 헤더가 올바르지 않습니다."),
+    INVALID_SCOPE(400, "K_002", "scope는 cardinfo만 허용됩니다."),
+    INVALID_AGREEMENT(400, "K_003", "제3자정보제공동의여부는 Y만 허용됩니다."),
+    NO_VALID_CARDS(404, "K_004", "유효한 카드가 없습니다."),
+    USER_WITHDRAWAL_IN_PROGRESS(409, "K_005", "사용자탈퇴 처리중인 서비스입니다."),
     ;
 
     private final int status;
