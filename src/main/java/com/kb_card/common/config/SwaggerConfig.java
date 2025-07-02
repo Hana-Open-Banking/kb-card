@@ -33,8 +33,8 @@ public class SwaggerConfig {
     @Bean
     public OpenAPI springOpenAPI() {
         Info info = new Info()
-                .title("하나원카 API")
-                .description("하나원카 API 명세서입니다.")
+                .title("KB카드 API")
+                .description("KB카드 API 명세서입니다.")
                 .version("v0.0.1");
 
         List<Server> servers = List.of(new Server().url(serverUrl));

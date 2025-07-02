@@ -1,13 +1,8 @@
 spring:
   application:
-    name: kftc
-#  jpa:
-#    database-platform: org.hibernate.dialect.MySQLDialect
-#    hibernate:
-#      ddl-auto: update
-#    properties:
-#      hibernate:
-#        dialect: org.hibernate.dialect.MySQLDialect
+    name: kb-card
+  profiles:
+    active: local
   config:
-    import: application-datasource.yml, application-setting.yml
+    import: application-datasource.yml, application-setting.yml, application-local.yml
 

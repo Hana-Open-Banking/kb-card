@@ -1,7 +1,2 @@
-jwt:
-  secret-key: ${JWT_SECRET_KEY}
-  token:
-    expired-time-ms: 2592000000
-swagger:
-  #  server-url: ${SERVER_URL}
-  server-url:
+server:
+  port: 8083
