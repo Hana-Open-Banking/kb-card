@@ -9,6 +9,8 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "card_bills")
@@ -23,12 +25,6 @@ public class CardBill extends DateTimeEntity {
     private Long id;
     
     /**
-     * 청구서 고유번호
-     */
-    @Column(name = "bill_id", unique = true, nullable = false, length = 20)
-    private String billId;
-    
-    /**
      * 카드 정보 (FK to Card)
      */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -36,22 +32,47 @@ public class CardBill extends DateTimeEntity {
     private Card card;
     
     /**
-     * 청구월 (YYYYMM 형식)
+     * 청구년월 (YYYYMM) - 청구서가 결제되는 월
      */
-    @Column(name = "bill_month", nullable = false, length = 6)
-    private String billMonth;
+    @Column(name = "charge_month", nullable = false, length = 6)
+    private String chargeMonth;
     
     /**
-     * 청구금액
+     * 결제순번 - 동일 청구년월에 여러 건의 청구내역이 있을 때 구분용
      */
-    @Column(name = "bill_amt", nullable = false, precision = 15, scale = 2)
-    private BigDecimal billAmt;
+    @Column(name = "settlement_seq_no", nullable = false, length = 4)
+    @Builder.Default
+    private String settlementSeqNo = "0001";
     
     /**
-     * 납부기한
+     * 청구금액 (마이너스 금액 가능)
      */
-    @Column(name = "pay_due_date", nullable = false)
-    private LocalDate payDueDate;
+    @Column(name = "charge_amt", nullable = false, precision = 13, scale = 0)
+    @Builder.Default
+    private BigDecimal chargeAmt = BigDecimal.ZERO;
+    
+    /**
+     * 결제일 (고객이 지정한 결제일)
+     */
+    @Column(name = "settlement_day", nullable = false, length = 2)
+    private String settlementDay;
+    
+    /**
+     * 결제년월일 (실제 결제일, YYYYMMDD)
+     * 휴일 등으로 실제 결제일은 고객이 지정한 결제일과 다를 수 있음
+     */
+    @Column(name = "settlement_date", length = 8)
+    private String settlementDate;
+    
+    /**
+     * 신용/체크 구분
+     * "01": 신용
+     * "02": 체크
+     * "03": 신용/체크혼용
+     */
+    @Column(name = "credit_check_type", nullable = false, length = 2)
+    @Builder.Default
+    private String creditCheckType = "01";
     
     /**
      * 청구서 상태
@@ -59,85 +80,66 @@ public class CardBill extends DateTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "bill_status", nullable = false)
     @Builder.Default
-    private BillStatus billStatus = BillStatus.UNPAID;
+    private BillStatus billStatus = BillStatus.ACTIVE;
     
     /**
-     * 연체료
+     * 청구서 확정일 (다음 달 1일에 확정됨)
      */
-    @Column(name = "late_fee", precision = 10, scale = 2)
+    @Column(name = "closed_at")
+    private LocalDate closedAt;
+    
+    /**
+     * 청구서 상세 내역들
+     */
+    @OneToMany(mappedBy = "cardBill", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
-    private BigDecimal lateFee = BigDecimal.ZERO;
-    
-    /**
-     * 납부금액
-     */
-    @Column(name = "paid_amt", precision = 15, scale = 2)
-    @Builder.Default
-    private BigDecimal paidAmt = BigDecimal.ZERO;
-    
-    /**
-     * 납부일자
-     */
-    @Column(name = "paid_date")
-    private LocalDate paidDate;
-    
-    /**
-     * 국내이용금액
-     */
-    @Column(name = "domestic_amt", precision = 15, scale = 2)
-    @Builder.Default
-    private BigDecimal domesticAmt = BigDecimal.ZERO;
-    
-    /**
-     * 해외이용금액
-     */
-    @Column(name = "overseas_amt", precision = 15, scale = 2)
-    @Builder.Default
-    private BigDecimal overseasAmt = BigDecimal.ZERO;
-    
-    /**
-     * 현금서비스금액
-     */
-    @Column(name = "cash_service_amt", precision = 15, scale = 2)
-    @Builder.Default
-    private BigDecimal cashServiceAmt = BigDecimal.ZERO;
+    private List<CardBillDetail> billDetails = new ArrayList<>();
     
     public enum BillStatus {
-        UNPAID("1"),    // 미납
-        PAID("2"),      // 완납
-        PARTIAL("3"),   // 부분납부
-        OVERDUE("4");   // 연체
-        
-        private final String code;
-        
-        BillStatus(String code) {
-            this.code = code;
-        }
-        
-        public String getCode() {
-            return code;
-        }
+        ACTIVE,     // 활성 (현재 달 청구서, 계속 업데이트됨)
+        CLOSED,     // 확정 (이전 달 청구서, 더 이상 변경 없음)
+        PAID,       // 결제완료
+        OVERDUE     // 연체
     }
     
-    public void markAsPaid(BigDecimal amount, LocalDate paymentDate) {
-        this.paidAmt = amount;
-        this.paidDate = paymentDate;
-        
-        if (amount.compareTo(billAmt) >= 0) {
-            this.billStatus = BillStatus.PAID;
-        } else {
-            this.billStatus = BillStatus.PARTIAL;
-        }
+    /**
+     * 청구서에 상세 내역 추가 및 총액 업데이트
+     */
+    public void addBillDetail(CardBillDetail detail) {
+        this.billDetails.add(detail);
+        this.chargeAmt = this.chargeAmt.add(detail.getPaidAmt());
     }
     
-    public void markAsOverdue(BigDecimal lateFeeAmount) {
+    /**
+     * 청구서 총액 업데이트 (상세 내역 기준으로 재계산)
+     */
+    public void updateTotalAmount() {
+        this.chargeAmt = billDetails.stream()
+                .map(CardBillDetail::getPaidAmt)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+    
+    /**
+     * 청구서 확정 처리
+     */
+    public void close() {
+        this.billStatus = BillStatus.CLOSED;
+        this.closedAt = LocalDate.now();
+    }
+    
+    /**
+     * 결제 완료 처리
+     */
+    public void markAsPaid(String actualSettlementDate) {
+        this.billStatus = BillStatus.PAID;
+        this.settlementDate = actualSettlementDate;
+    }
+    
+    /**
+     * 연체 처리
+     */
+    public void markAsOverdue() {
         this.billStatus = BillStatus.OVERDUE;
-        this.lateFee = lateFeeAmount;
-    }
-    
-    public boolean isOverdue() {
-        return billStatus == BillStatus.OVERDUE || 
-               (billStatus == BillStatus.UNPAID && LocalDate.now().isAfter(payDueDate));
     }
     
     // 편의 메서드들
@@ -145,15 +147,27 @@ public class CardBill extends DateTimeEntity {
         return card != null ? card.getCardNo() : null;
     }
     
-    public String getUserId() {
-        return card != null ? card.getUserId() : null;
-    }
-    
     public String getUserCi() {
         return card != null ? card.getUserCi() : null;
     }
     
-    public String getCardName() {
-        return card != null ? card.getCardName() : null;
+    public String getMemberId() {
+        return card != null ? card.getUserId() : null;
     }
-} 
+    
+    public String getBankCodeStd() {
+        return "381"; // KB카드 표준코드
+    }
+    
+    public int getBillDetailCount() {
+        return billDetails != null ? billDetails.size() : 0;
+    }
+    
+    public boolean isActive() {
+        return billStatus == BillStatus.ACTIVE;
+    }
+    
+    public boolean isClosed() {
+        return billStatus == BillStatus.CLOSED;
+    }
+}

@@ -34,14 +34,7 @@ public interface CardRepository extends JpaRepository<Card, Long> {
      * 카드번호로 카드 조회
      */
     Optional<Card> findByCardNo(String cardNo);
-    
-    /**
-     * 카드번호로 카드 조회 (기존 네이밍 호환성 유지)
-     */
-    default Optional<Card> findByCardNumber(String cardNumber) {
-        return findByCardNo(cardNumber);
-    }
-    
+
     /**
      * 사용자별 유효한 카드 조회 (해지되지 않은 카드)
      */
