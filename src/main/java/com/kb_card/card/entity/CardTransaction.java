@@ -26,7 +26,7 @@ public class CardTransaction extends DateTimeEntity {
     /**
      * 거래 고유번호
      */
-    @Column(name = "transaction_id", unique = true, nullable = false, length = 20)
+    @Column(name = "transaction_id", unique = true, nullable = false, length = 30)
     private String transactionId;
     
     /**

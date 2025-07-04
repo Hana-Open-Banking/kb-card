@@ -1,15 +1,8 @@
 package com.kb_card.card.service;
 
 import com.kb_card.card.dto.*;
-import com.kb_card.card.entity.Card;
-import com.kb_card.card.entity.CardApplication;
-import com.kb_card.card.entity.CardUser;
-import com.kb_card.card.entity.CardProduct;
-import com.kb_card.card.entity.CardTransaction;
-import com.kb_card.card.repository.CardApplicationRepository;
-import com.kb_card.card.repository.CardRepository;
-import com.kb_card.card.repository.CardUserRepository;
-import com.kb_card.card.repository.CardTransactionRepository;
+import com.kb_card.card.entity.*;
+import com.kb_card.card.repository.*;
 import com.kb_card.common.exception.BusinessException;
 import com.kb_card.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -30,12 +23,14 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class CardUserService {
-    
+
     private final CardUserRepository cardUserRepository;
     private final CardRepository cardRepository;
     private final CardApplicationRepository cardApplicationRepository;
     private final CardTransactionRepository cardTransactionRepository;
-    
+    private final CardBillDetailRepository cardBillDetailRepository;
+    private final CardBillRepository cardBillRepository;
+
     private static final String BANK_NAME = "KB카드";
     private static final String BANK_CODE = "381"; // KB카드 표준코드
 
@@ -47,9 +42,9 @@ public class CardUserService {
     @Transactional
     public void withdrawUser(String userCi) {
         log.info("사용자 탈퇴 처리 시작 - userCi: {}", userCi);
-        
+
         Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(userCi);
-        
+
         if (optionalUser.isPresent()) {
             CardUser user = optionalUser.get();
             user.withdraw();
@@ -60,7 +55,7 @@ public class CardUserService {
             throw new BusinessException(ErrorCode.ENTITY_NOT_FOUND);
         }
     }
-    
+
     /**
      * 자동 탈퇴 처리 (시스템 배치용)
      * 90일 이상 비활성 사용자 자동 탈퇴
@@ -68,18 +63,18 @@ public class CardUserService {
     @Transactional
     public void processAutoWithdrawal() {
         log.info("자동 탈퇴 처리 시작");
-        
+
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(90);
         // 실제 구현에서는 Repository에 findInactiveUsers 메서드 추가 필요
         // List<CardUser> inactiveUsers = cardUserRepository.findInactiveUsers(cutoffDate);
         List<CardUser> inactiveUsers = List.of(); // 임시로 빈 리스트
-        
+
         for (CardUser user : inactiveUsers) {
             user.withdraw();
             cardUserRepository.save(user);
             log.info("자동 탈퇴 처리 - userId: {}", user.getUserId());
         }
-        
+
         log.info("자동 탈퇴 처리 완료 - 처리 건수: {}", inactiveUsers.size());
     }
 
@@ -88,30 +83,30 @@ public class CardUserService {
      */
     @Transactional
     public CardIssueResponse issueNewCard(CardIssueRequest request) {
-        log.info("새로운 카드 발급 신청 - userCi: {}, cardType: {}, cardProductName: {}", 
+        log.info("새로운 카드 발급 신청 - userCi: {}, cardType: {}, cardProductName: {}",
                 request.getUserCi(), request.getCardType(), request.getCardProductName());
-        
+
         try {
             // 1. 사용자 조회 또는 생성
             CardUser applicant = cardUserRepository.findByUserCi(request.getUserCi())
                     .orElseThrow(() -> new BusinessException(ErrorCode.ENTITY_NOT_FOUND));
-            
+
             // 2. 카드 상품 조회 (임시로 기본 상품 생성)
             CardProduct cardProduct = CardProduct.builder()
                     .productCode("KB001")
                     .productName(request.getCardProductName())
-                    .cardType("CREDIT".equals(request.getCardType()) ? 
+                    .cardType("CREDIT".equals(request.getCardType()) ?
                              CardProduct.CardType.CREDIT : CardProduct.CardType.DEBIT)
                     .annualFee(BigDecimal.ZERO)
                     .description("기본 카드 상품")
                     .build();
-            
+
             // 3. 신청 ID 생성
             String applicationId = generateApplicationId();
-            
+
             // 4. 기본 심사 (간소화된 버전)
             String issueStatus = performBasicScreening(request);
-            
+
             // 5. 카드 신청 정보 저장
             CardApplication application = CardApplication.builder()
                     .applicationId(applicationId)
@@ -120,13 +115,13 @@ public class CardUserService {
                     .applicantName("카드신청자") // 실제로는 사용자 정보로부터 가져와야 함
                     .phone(request.getPhoneNumber())
                     .email(request.getEmail() != null ? request.getEmail() : "unknown@example.com")
-                    .annualIncome(request.getAnnualIncome() != null ? 
+                    .annualIncome(request.getAnnualIncome() != null ?
                                  BigDecimal.valueOf(request.getAnnualIncome()) : BigDecimal.ZERO)
                     .applicationDate(LocalDateTime.now())
                     .build();
-            
+
             cardApplicationRepository.save(application);
-            
+
             // 6. 응답 생성
             return CardIssueResponse.builder()
                     .applicationId(applicationId)
@@ -136,20 +131,20 @@ public class CardUserService {
                     .expectedIssueDate(LocalDateTime.now().plusDays(5).format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
                     .expectedDeliveryDate(LocalDateTime.now().plusDays(7).format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
                     .build();
-                    
+
         } catch (Exception e) {
             log.error("카드 발급 신청 중 오류 발생 - userCi: {}, error: {}", request.getUserCi(), e.getMessage(), e);
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
     }
-    
+
     /**
      * 신청 ID 생성
      */
     private String generateApplicationId() {
         return "APP" + System.currentTimeMillis() + String.format("%03d", new Random().nextInt(1000));
     }
-    
+
     /**
      * 기본 심사 수행 (간소화된 버전)
      */
@@ -157,7 +152,7 @@ public class CardUserService {
         // 실제로는 복합적인 심사 로직이 필요하지만, 샘플에서는 간소화
         Random random = new Random();
         int score = random.nextInt(100);
-        
+
         if (score >= 70) {
             return "APPROVED"; // 승인
         } else if (score >= 40) {
@@ -166,7 +161,7 @@ public class CardUserService {
             return "REJECTED"; // 거절
         }
     }
-    
+
     /**
      * 발급 상태에 따른 메시지 생성
      */
@@ -187,40 +182,40 @@ public class CardUserService {
     @Transactional(readOnly = true)
     public CardListResponse getCardList(CardListRequest request) {
         log.info("카드목록조회 요청 처리 - userCi: {}", request.getUserCi());
-        
+
         try {
             // 1. 사용자 조회
-            log.debug("CardUser 조회 시작 - userCi: {}", request.getUserCi()); 
+            log.debug("CardUser 조회 시작 - userCi: {}", request.getUserCi());
             Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(request.getUserCi());
-            
+
             if (optionalUser.isEmpty()) {
                 log.warn("카드목록조회 - 사용자를 찾을 수 없음: {}", request.getUserCi());
                 log.warn("DB에서 조회된 사용자 수: {}", cardUserRepository.count());
                 return createCardListErrorResponse(request, "555", "해당 사용자 없음");
             }
-            
+
             CardUser user = optionalUser.get();
-            log.info("CardUser 조회 성공 - userId: {}, userName: {}, userCi: {}", 
+            log.info("CardUser 조회 성공 - userId: {}, userName: {}, userCi: {}",
                     user.getUserId(), user.getUserName(), user.getUserCi());
-            
+
             // 2. 해지된 사용자 확인
             if (user.getStatus() == CardUser.UserStatus.WITHDRAWN) {
                 log.warn("카드목록조회 - 해지된 사용자: {}", request.getUserCi());
                 return createCardListErrorResponse(request, "551", "기 해지 사용자");
             }
-            
+
             // 3. 사용자의 카드 목록 조회
             List<Card> userCards = cardRepository.findByUserCi(request.getUserCi());
             log.info("사용자 카드 조회 완료 - userCi: {}, 카드 수: {}", request.getUserCi(), userCards.size());
-            
+
             // 4. 카드 목록을 응답 형태로 변환
             List<CardListResponse.CardInfo> cardInfoList = userCards.stream()
                     .map(this::convertToCardInfo)
                     .toList();
-            
-            log.info("카드목록조회 완료 - userCi: {}, cardCnt: {}", 
+
+            log.info("카드목록조회 완료 - userCi: {}, cardCnt: {}",
                     request.getUserCi(), cardInfoList.size());
-            
+
             return CardListResponse.builder()
                     .apiTranId(generateApiTranId())
                     .apiTranDtm(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")))
@@ -236,14 +231,14 @@ public class CardUserService {
                     .cardList(cardInfoList)
                     .cardCnt(String.valueOf(cardInfoList.size()))
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("카드목록조회 처리 중 오류 발생 - userCi: {}, error: {}", 
+            log.error("카드목록조회 처리 중 오류 발생 - userCi: {}, error: {}",
                      request.getUserCi(), e.getMessage(), e);
             return createCardListErrorResponse(request, "999", "시스템 오류");
         }
     }
-    
+
     /**
      * Card 엔티티를 CardInfo DTO로 변환
      */
@@ -255,7 +250,7 @@ public class CardUserService {
                 .cardMemberType("CREDIT".equals(card.getCardType()) ? "1" : "2") // String 타입으로 비교
                 .build();
     }
-    
+
     /**
      * 카드번호 마스킹 처리
      */
@@ -263,11 +258,11 @@ public class CardUserService {
         if (cardNumber == null || cardNumber.length() < 16) {
             return "****-****-****-****";
         }
-        
+
         // 16자리 카드번호를 4-4-4-4 형태로 마스킹
         return cardNumber.substring(0, 4) + "-****-****-" + cardNumber.substring(12);
     }
-    
+
     /**
      * 카드목록조회 에러 응답 생성
      */
@@ -295,38 +290,38 @@ public class CardUserService {
     @Transactional
     public CardCancelResponse cancelCardInquiry(CardCancelRequest request) {
         log.info("카드조회해지 요청 처리 - userCi: {}", request.getUserCi());
-        
+
         try {
             Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(request.getUserCi());
-            
+
             if (optionalUser.isPresent()) {
                 CardUser user = optionalUser.get();
-                
+
                 // 이미 해지된 사용자인지 확인
                 if (user.getStatus() == CardUser.UserStatus.WITHDRAWN) {
                     log.warn("이미 해지된 사용자 - userCi: {}", request.getUserCi());
                     return createCancelResponse(request, "551", "기 해지 사용자");
                 }
-                
+
                 // 사용자 해지 처리
                 user.withdraw();
                 cardUserRepository.save(user);
-                
+
                 log.info("카드조회해지 완료 - userCi: {}", request.getUserCi());
                 return createCancelResponse(request, "000", "");
-                
+
             } else {
                 log.warn("해지할 사용자를 찾을 수 없음 - userCi: {}", request.getUserCi());
                 return createCancelResponse(request, "555", "해당 사용자 없음");
             }
-            
+
         } catch (Exception e) {
-            log.error("카드조회해지 처리 중 오류 발생 - userCi: {}, error: {}", 
+            log.error("카드조회해지 처리 중 오류 발생 - userCi: {}, error: {}",
                      request.getUserCi(), e.getMessage(), e);
             return createCancelResponse(request, "999", "시스템 오류");
         }
     }
-    
+
     /**
      * 카드조회해지 응답 생성
      */
@@ -335,7 +330,7 @@ public class CardUserService {
         String apiTranId = generateApiTranId();
         String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String rspCode = "000".equals(bankRspCode) ? "A0000" : "A0001";
-        
+
         return CardCancelResponse.builder()
                 .apiTranId(apiTranId)
                 .apiTranDtm(currentDateTime)
@@ -355,7 +350,7 @@ public class CardUserService {
     @Transactional(readOnly = true)
     public CardIssueInfoResponse getCardIssueInfo(CardIssueInfoRequest request) {
         log.info("카드기본정보조회 요청 처리 - cardId: {}, userCi: {}", request.getCardId(), request.getUserCi());
-        
+
         try {
             // 사용자 CI로 사용자 조회
             Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(request.getUserCi());
@@ -363,12 +358,12 @@ public class CardUserService {
                 log.warn("사용자를 찾을 수 없음 - userCi: {}", request.getUserCi());
                 return createIssueInfoErrorResponse(request, ErrorCode.ENTITY_NOT_FOUND);
             }
-            
-            // 실제로는 카드 ID로 카드 정보를 조회해야 하지만, 샘플에서는 고정 응답  
+
+            // 실제로는 카드 ID로 카드 정보를 조회해야 하지만, 샘플에서는 고정 응답
             String apiTranId = generateApiTranId();
             String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
             String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            
+
             return CardIssueInfoResponse.builder()
                     .apiTranId(apiTranId)
                     .apiTranDtm(currentDateTime)
@@ -385,9 +380,9 @@ public class CardUserService {
                     .settlementAccountNumMasked("000-1234567-***")
                     .issueDate("20231201")
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("카드기본정보조회 처리 중 오류 발생 - cardId: {}, userCi: {}, error: {}", 
+            log.error("카드기본정보조회 처리 중 오류 발생 - cardId: {}, userCi: {}, error: {}",
                      request.getCardId(), request.getUserCi(), e.getMessage(), e);
             return createIssueInfoErrorResponse(request, ErrorCode.INTERNAL_SERVER_ERROR);
         }
@@ -398,9 +393,9 @@ public class CardUserService {
      */
     @Transactional(readOnly = true)
     public CardBillsResponse getCardBills(CardBillsRequest request) {
-        log.info("카드청구기본정보조회 요청 처리 - fromMonth: {}, toMonth: {}, userCi: {}", 
+        log.info("카드청구기본정보조회 요청 처리 - fromMonth: {}, toMonth: {}, userCi: {}",
                 request.getFromMonth(), request.getToMonth(), request.getUserCi());
-        
+
         try {
             // 사용자 CI로 사용자 조회
             Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(request.getUserCi());
@@ -408,15 +403,22 @@ public class CardUserService {
                 log.warn("사용자를 찾을 수 없음 - userCi: {}", request.getUserCi());
                 return createBillsErrorResponse(request, ErrorCode.ENTITY_NOT_FOUND);
             }
-            
+
             CardUser user = optionalUser.get();
+
+            // 해지된 사용자 확인
+            if (user.getStatus() == CardUser.UserStatus.WITHDRAWN) {
+                log.warn("해지된 사용자 - userCi: {}", request.getUserCi());
+                return createBillsErrorResponse(request, ErrorCode.ENTITY_NOT_FOUND);
+            }
+
             String apiTranId = generateApiTranId();
             String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
             String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            
-            // 샘플 청구 목록 생성
-            List<CardBillsResponse.BillInfo> billList = generateSampleBillList(request);
-            
+
+            // 실제 청구서 목록 조회
+            List<CardBillsResponse.BillInfo> billList = getBillListFromDatabase(request);
+
             return CardBillsResponse.builder()
                     .apiTranId(apiTranId)
                     .apiTranDtm(currentDateTime)
@@ -432,12 +434,56 @@ public class CardUserService {
                     .billCnt(String.valueOf(billList.size()))
                     .billList(billList)
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("카드청구기본정보조회 처리 중 오류 발생 - userCi: {}, error: {}", 
-                     request.getUserCi(), e.getMessage(), e);
+            log.error("카드청구기본정보조회 처리 중 오류 발생 - userCi: {}, error: {}",
+                    request.getUserCi(), e.getMessage(), e);
             return createBillsErrorResponse(request, ErrorCode.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * 데이터베이스에서 실제 청구서 목록 조회
+     */
+    private List<CardBillsResponse.BillInfo> getBillListFromDatabase(CardBillsRequest request) {
+        log.info("실제 청구서 목록 조회 시작 - userCi: {}, fromMonth: {}, toMonth: {}",
+                request.getUserCi(), request.getFromMonth(), request.getToMonth());
+
+        try {
+            // 사용자 CI로 청구서 목록 조회
+            List<CardBill> cardBills = cardBillRepository.findByUserCiAndChargeMonthRange(
+                    request.getUserCi(),
+                    request.getFromMonth(),
+                    request.getToMonth()
+            );
+
+            log.info("조회된 청구서 개수: {}", cardBills.size());
+
+            // CardBill 엔티티를 BillInfo DTO로 변환
+            return cardBills.stream()
+                    .map(this::convertToBillInfo)
+                    .toList();
+
+        } catch (Exception e) {
+            log.error("청구서 목록 조회 실패 - userCi: {}, error: {}",
+                    request.getUserCi(), e.getMessage(), e);
+            return List.of(); // 빈 목록 반환
+        }
+    }
+
+    /**
+     * CardBill 엔티티를 BillInfo DTO로 변환
+     */
+    private CardBillsResponse.BillInfo convertToBillInfo(CardBill cardBill) {
+        return CardBillsResponse.BillInfo.builder()
+                .chargeMonth(cardBill.getChargeMonth())
+                .settlementSeqNo(cardBill.getSettlementSeqNo())
+                .cardId(String.valueOf(cardBill.getCard().getId()))
+                .chargeAmt(cardBill.getChargeAmt().toString())
+                .settlementDay(cardBill.getSettlementDay())
+                .settlementDate(cardBill.getSettlementDate())
+                .creditCheckType(cardBill.getCreditCheckType())
+                .build();
     }
 
     /**
@@ -445,9 +491,9 @@ public class CardUserService {
      */
     @Transactional(readOnly = true)
     public CardBillDetailResponse getCardBillDetail(CardBillDetailRequest request) {
-        log.info("카드청구상세정보조회 요청 처리 - chargeMonth: {}, settlementSeqNo: {}, userCi: {}", 
+        log.info("카드청구상세정보조회 요청 처리 - chargeMonth: {}, settlementSeqNo: {}, userCi: {}",
                 request.getChargeMonth(), request.getSettlementSeqNo(), request.getUserCi());
-        
+
         try {
             // 사용자 CI로 사용자 조회
             Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(request.getUserCi());
@@ -455,15 +501,22 @@ public class CardUserService {
                 log.warn("사용자를 찾을 수 없음 - userCi: {}", request.getUserCi());
                 return createBillDetailErrorResponse(request, ErrorCode.ENTITY_NOT_FOUND);
             }
-            
+
             CardUser user = optionalUser.get();
+
+            // 해지된 사용자 확인
+            if (user.getStatus() == CardUser.UserStatus.WITHDRAWN) {
+                log.warn("해지된 사용자 - userCi: {}", request.getUserCi());
+                return createBillDetailErrorResponse(request, ErrorCode.ENTITY_NOT_FOUND);
+            }
+
             String apiTranId = generateApiTranId();
             String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
             String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            
-            // 샘플 청구 상세 목록 생성
-            List<CardBillDetailResponse.BillDetailInfo> billDetailList = generateSampleBillDetailList(request);
-            
+
+            // 실제 청구서 상세 목록 조회
+            List<CardBillDetailResponse.BillDetailInfo> billDetailList = getBillDetailListFromDatabase(request);
+
             return CardBillDetailResponse.builder()
                     .apiTranId(apiTranId)
                     .apiTranDtm(currentDateTime)
@@ -479,12 +532,56 @@ public class CardUserService {
                     .billDetailCnt(String.valueOf(billDetailList.size()))
                     .billDetailList(billDetailList)
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("카드청구상세정보조회 처리 중 오류 발생 - userCi: {}, error: {}", 
-                     request.getUserCi(), e.getMessage(), e);
+            log.error("카드청구상세정보조회 처리 중 오류 발생 - userCi: {}, error: {}",
+                    request.getUserCi(), e.getMessage(), e);
             return createBillDetailErrorResponse(request, ErrorCode.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * 데이터베이스에서 실제 청구서 상세 목록 조회
+     */
+    private List<CardBillDetailResponse.BillDetailInfo> getBillDetailListFromDatabase(CardBillDetailRequest request) {
+        log.info("실제 청구서 상세 목록 조회 시작 - userCi: {}, chargeMonth: {}, settlementSeqNo: {}",
+                request.getUserCi(), request.getChargeMonth(), request.getSettlementSeqNo());
+
+        try {
+            // 사용자 CI, 청구년월, 결제순번으로 청구서 상세 내역 조회
+            List<CardBillDetail> billDetails = cardBillDetailRepository.findByUserCiAndChargeMonthAndSettlementSeqNo(
+                    request.getUserCi(),
+                    request.getChargeMonth(),
+                    request.getSettlementSeqNo()
+            );
+
+            log.info("조회된 청구서 상세 개수: {}", billDetails.size());
+
+            // CardBillDetail 엔티티를 BillDetailInfo DTO로 변환
+            return billDetails.stream()
+                    .map(this::convertToBillDetailInfo)
+                    .toList();
+
+        } catch (Exception e) {
+            log.error("청구서 상세 목록 조회 실패 - userCi: {}, chargeMonth: {}, settlementSeqNo: {}, error: {}",
+                    request.getUserCi(), request.getChargeMonth(), request.getSettlementSeqNo(), e.getMessage(), e);
+            return List.of(); // 빈 목록 반환
+        }
+    }
+
+    /**
+     * CardBillDetail 엔티티를 BillDetailInfo DTO로 변환
+     */
+    private CardBillDetailResponse.BillDetailInfo convertToBillDetailInfo(CardBillDetail billDetail) {
+        return CardBillDetailResponse.BillDetailInfo.builder()
+                .cardValue(billDetail.getCardId())
+                .paidDate(billDetail.getPaidDate())
+                .paidTime(billDetail.getPaidTime())
+                .paidAmt(billDetail.getPaidAmt().toString())
+                .merchantNameMasked(billDetail.getMerchantNameMasked())
+                .creditFeeAmt(billDetail.getCreditFeeAmt().toString())
+                .productType(billDetail.getProductType())
+                .build();
     }
 
     /**
@@ -492,68 +589,68 @@ public class CardUserService {
      */
     @Transactional(readOnly = true)
     public CardTransactionResponse getCardTransactions(CardTransactionRequest request) {
-        log.info("카드거래내역조회 요청 처리 - userCi: {}, cardId: {}, fromDate: {}, toDate: {}", 
+        log.info("카드거래내역조회 요청 처리 - userCi: {}, cardId: {}, fromDate: {}, toDate: {}",
                 request.getUserCi(), request.getCardId(), request.getFromDate(), request.getToDate());
-        
+
         try {
             // 1. 사용자 조회
             Optional<CardUser> optionalUser = cardUserRepository.findByUserCi(request.getUserCi());
-            
+
             if (optionalUser.isEmpty()) {
                 log.warn("카드거래내역조회 - 사용자를 찾을 수 없음: {}", request.getUserCi());
                 return createTransactionErrorResponse(request, "555", "해당 사용자 없음");
             }
-            
+
             CardUser user = optionalUser.get();
-            
+
             // 2. 해지된 사용자 확인
             if (user.getStatus() == CardUser.UserStatus.WITHDRAWN) {
                 log.warn("카드거래내역조회 - 해지된 사용자: {}", request.getUserCi());
                 return createTransactionErrorResponse(request, "551", "기 해지 사용자");
             }
-            
+
             // 3. 카드 조회
             Long cardId = Long.parseLong(request.getCardId());
             Optional<Card> optionalCard = cardRepository.findById(cardId);
-            
+
             if (optionalCard.isEmpty()) {
                 log.warn("카드거래내역조회 - 카드를 찾을 수 없음: {}", request.getCardId());
                 return createTransactionErrorResponse(request, "556", "해당 카드 없음");
             }
-            
+
             Card card = optionalCard.get();
-            
+
             // 4. 카드 소유자 확인
             if (!card.getUserCi().equals(request.getUserCi())) {
-                log.warn("카드거래내역조회 - 카드 소유자 불일치: cardId={}, userCi={}", 
+                log.warn("카드거래내역조회 - 카드 소유자 불일치: cardId={}, userCi={}",
                         request.getCardId(), request.getUserCi());
                 return createTransactionErrorResponse(request, "557", "카드 소유자 불일치");
             }
-            
+
             // 5. 거래내역 조회
             LocalDate fromDate = LocalDate.parse(request.getFromDate(), DateTimeFormatter.ofPattern("yyyyMMdd"));
             LocalDate toDate = LocalDate.parse(request.getToDate(), DateTimeFormatter.ofPattern("yyyyMMdd"));
-            
+
             List<CardTransaction> transactions = cardTransactionRepository.findByCardAndDateRange(
                     card, fromDate, toDate);
-            
+
             // 6. 페이징 처리 (한 페이지에 20건씩)
             int pageSize = 20;
             int pageIndex = Integer.parseInt(request.getPageIndex());
             int startIndex = (pageIndex - 1) * pageSize;
             int endIndex = Math.min(startIndex + pageSize, transactions.size());
-            
+
             List<CardTransaction> pagedTransactions = transactions.subList(startIndex, endIndex);
             boolean hasNextPage = endIndex < transactions.size();
-            
+
             // 7. 응답 데이터 변환
             List<CardTransactionResponse.TransactionInfo> transactionInfoList = pagedTransactions.stream()
                     .map(this::convertToTransactionInfo)
                     .toList();
-            
-            log.info("카드거래내역조회 완료 - userCi: {}, cardId: {}, tranCnt: {}", 
+
+            log.info("카드거래내역조회 완료 - userCi: {}, cardId: {}, tranCnt: {}",
                     request.getUserCi(), request.getCardId(), transactionInfoList.size());
-            
+
             return CardTransactionResponse.builder()
                     .apiTranId(generateApiTranId())
                     .apiTranDtm(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")))
@@ -569,14 +666,14 @@ public class CardUserService {
                     .tranCnt(String.valueOf(transactionInfoList.size()))
                     .tranList(transactionInfoList)
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("카드거래내역조회 처리 중 오류 발생 - userCi: {}, cardId: {}, error: {}", 
+            log.error("카드거래내역조회 처리 중 오류 발생 - userCi: {}, cardId: {}, error: {}",
                      request.getUserCi(), request.getCardId(), e.getMessage(), e);
             return createTransactionErrorResponse(request, "999", "시스템 오류");
         }
     }
-    
+
     /**
      * CardTransaction 엔티티를 TransactionInfo DTO로 변환
      */
@@ -593,7 +690,7 @@ public class CardUserService {
                 .memo(transaction.getMemo())
                 .build();
     }
-    
+
     /**
      * 거래내역조회 오류 응답 생성
      */
@@ -625,74 +722,13 @@ public class CardUserService {
     }
 
     /**
-     * 샘플 청구 목록 생성
-     */
-    private List<CardBillsResponse.BillInfo> generateSampleBillList(CardBillsRequest request) {
-        return List.of(
-            CardBillsResponse.BillInfo.builder()
-                .chargeMonth("202312")
-                .settlementSeqNo("001")
-                .cardId("CARD001")
-                .chargeAmt("450000")
-                .settlementDay("25")
-                .settlementDate("20231226")
-                .creditCheckType("01")
-                .build(),
-            CardBillsResponse.BillInfo.builder()
-                .chargeMonth("202311")
-                .settlementSeqNo("001")
-                .cardId("CARD001")
-                .chargeAmt("320000")
-                .settlementDay("25")
-                .settlementDate("20231125")
-                .creditCheckType("01")
-                .build()
-        );
-    }
-
-    /**
-     * 샘플 청구 상세 목록 생성
-     */
-    private List<CardBillDetailResponse.BillDetailInfo> generateSampleBillDetailList(CardBillDetailRequest request) {
-        return List.of(
-            CardBillDetailResponse.BillDetailInfo.builder()
-                .cardValue("CARD001")
-                .paidDate("20231215")
-                .paidTime("143000")
-                .paidAmt("85000")
-                .merchantNameMasked("스타**")
-                .creditFeeAmt("0")
-                .productType("01")
-                .build(),
-            CardBillDetailResponse.BillDetailInfo.builder()
-                .cardValue("CARD001")
-                .paidDate("20231214")
-                .paidTime("120000")
-                .paidAmt("32000")
-                .merchantNameMasked("GS**편의점")
-                .creditFeeAmt("0")
-                .productType("01")
-                .build(),
-            CardBillDetailResponse.BillDetailInfo.builder()
-                .cardValue("CARD001")
-                .paidDate("20231213")
-                .paidTime("190000")
-                .paidAmt("150000")
-                .merchantNameMasked("롯데**")
-                .creditFeeAmt("0")
-                .productType("02")
-                .build()
-        );
-    }
-
-    /**
      * 카드기본정보조회 에러 응답 생성
      */
     private CardIssueInfoResponse createIssueInfoErrorResponse(CardIssueInfoRequest request, ErrorCode errorCode) {
         String apiTranId = generateApiTranId();
         String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        
+
         return CardIssueInfoResponse.builder()
                 .apiTranId(apiTranId)
                 .apiTranDtm(currentDateTime)
@@ -713,7 +749,7 @@ public class CardUserService {
         String apiTranId = generateApiTranId();
         String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        
+
         return CardBillsResponse.builder()
                 .apiTranId(apiTranId)
                 .apiTranDtm(currentDateTime)
@@ -738,7 +774,7 @@ public class CardUserService {
         String apiTranId = generateApiTranId();
         String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String bankTranDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        
+
         return CardBillDetailResponse.builder()
                 .apiTranId(apiTranId)
                 .apiTranDtm(currentDateTime)
@@ -755,4 +791,4 @@ public class CardUserService {
                 .billDetailList(List.of())
                 .build();
     }
-} 
+}
