@@ -28,6 +28,13 @@ public class CardProduct extends DateTimeEntity {
      */
     @Column(name = "product_name", nullable = false, length = 50)
     private String productName;
+
+    /**
+     * 카드 이미지
+     */
+    @Lob
+    @Column(name = "card_image")
+    private String cardImage;
     
     /**
      * 카드 유형

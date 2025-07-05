@@ -16,12 +16,15 @@ public interface CardBillDetailRepository extends JpaRepository<CardBillDetail, 
     /**
      * 청구서별 상세 내역 조회 (사용일시 기준 내림차순)
      */
-    List<CardBillDetail> findByCardBillOrderByPaidDateDescPaidTimeDesc(CardBill cardBill);
+    @Query("SELECT d FROM CardBillDetail d JOIN FETCH d.cardBill b JOIN FETCH b.card c JOIN FETCH c.cardProduct " +
+           "WHERE d.cardBill = :cardBill ORDER BY d.paidDate DESC, d.paidTime DESC")
+    List<CardBillDetail> findByCardBillOrderByPaidDateDescPaidTimeDesc(@Param("cardBill") CardBill cardBill);
     
     /**
      * 청구서 ID로 상세 내역 조회 (사용일시 기준 내림차순)
      */
-    @Query("SELECT d FROM CardBillDetail d WHERE d.cardBill.id = :cardBillId ORDER BY d.paidDate DESC, d.paidTime DESC")
+    @Query("SELECT d FROM CardBillDetail d JOIN FETCH d.cardBill b JOIN FETCH b.card c JOIN FETCH c.cardProduct " +
+           "WHERE d.cardBill.id = :cardBillId ORDER BY d.paidDate DESC, d.paidTime DESC")
     List<CardBillDetail> findByCardBillIdOrderByPaidDateDescPaidTimeDesc(@Param("cardBillId") Long cardBillId);
     
     /**
@@ -39,9 +42,10 @@ public interface CardBillDetailRepository extends JpaRepository<CardBillDetail, 
      * 사용자 CI와 청구년월, 결제순번으로 상세 내역 조회
      */
     @Query("SELECT d FROM CardBillDetail d " +
-           "WHERE d.cardBill.card.cardUser.userCi = :userCi " +
-           "AND d.cardBill.chargeMonth = :chargeMonth " +
-           "AND d.cardBill.settlementSeqNo = :settlementSeqNo " +
+           "JOIN FETCH d.cardBill b JOIN FETCH b.card c JOIN FETCH c.cardProduct " +
+           "WHERE b.card.cardUser.userCi = :userCi " +
+           "AND b.chargeMonth = :chargeMonth " +
+           "AND b.settlementSeqNo = :settlementSeqNo " +
            "ORDER BY d.paidDate DESC, d.paidTime DESC")
     List<CardBillDetail> findByUserCiAndChargeMonthAndSettlementSeqNo(
             @Param("userCi") String userCi,
@@ -53,8 +57,9 @@ public interface CardBillDetailRepository extends JpaRepository<CardBillDetail, 
      * 카드별 특정 월의 상세 내역 조회
      */
     @Query("SELECT d FROM CardBillDetail d " +
-           "WHERE d.cardBill.card.cardNo = :cardNo " +
-           "AND d.cardBill.chargeMonth = :chargeMonth " +
+           "JOIN FETCH d.cardBill b JOIN FETCH b.card c JOIN FETCH c.cardProduct " +
+           "WHERE b.card.cardNo = :cardNo " +
+           "AND b.chargeMonth = :chargeMonth " +
            "ORDER BY d.paidDate DESC, d.paidTime DESC")
     List<CardBillDetail> findByCardNoAndChargeMonth(
             @Param("cardNo") String cardNo,

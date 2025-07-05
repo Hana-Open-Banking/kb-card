@@ -21,48 +21,50 @@ public interface CardRepository extends JpaRepository<Card, Long> {
     /**
      * 사용자 ID로 카드 조회
      */
-    @Query("SELECT c FROM Card c WHERE c.cardUser.userId = :userId")
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardUser.userId = :userId")
     List<Card> findByUserId(@Param("userId") String userId);
     
     /**
      * 사용자 CI로 카드 조회 (호환성 유지)
      */
-    @Query("SELECT c FROM Card c WHERE c.cardUser.userCi = :userCi")
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardUser.userCi = :userCi")
     List<Card> findByUserCi(@Param("userCi") String userCi);
     
     /**
      * 카드번호로 카드 조회
      */
-    Optional<Card> findByCardNo(String cardNo);
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardNo = :cardNo")
+    Optional<Card> findByCardNo(@Param("cardNo") String cardNo);
 
     /**
      * 사용자별 유효한 카드 조회 (해지되지 않은 카드)
      */
-    @Query("SELECT c FROM Card c WHERE c.cardUser.userId = :userId AND c.cardStatus != 'CLOSED'")
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardUser.userId = :userId AND c.cardStatus != 'CLOSED'")
     List<Card> findValidCardsByUserId(@Param("userId") String userId);
     
     /**
      * 사용자 CI별 유효한 카드 조회 (호환성 유지)
      */
-    @Query("SELECT c FROM Card c WHERE c.cardUser.userCi = :userCi AND c.cardStatus != 'CLOSED'")
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardUser.userCi = :userCi AND c.cardStatus != 'CLOSED'")
     List<Card> findValidCardsByUserCi(@Param("userCi") String userCi);
     
     /**
      * 사용자별 활성 카드 조회
      */
-    @Query("SELECT c FROM Card c WHERE c.cardUser.userId = :userId AND c.cardStatus = 'NORMAL'")
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardUser.userId = :userId AND c.cardStatus = 'NORMAL'")
     List<Card> findActiveCardsByUserId(@Param("userId") String userId);
     
     /**
      * 사용자 CI별 활성 카드 조회 (호환성 유지)
      */
-    @Query("SELECT c FROM Card c WHERE c.cardUser.userCi = :userCi AND c.cardStatus = 'NORMAL'")
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardUser.userCi = :userCi AND c.cardStatus = 'NORMAL'")
     List<Card> findActiveCardsByUserCi(@Param("userCi") String userCi);
     
     /**
      * 카드 상태별 조회
      */
-    List<Card> findByCardStatus(Card.CardStatus cardStatus);
+    @Query("SELECT c FROM Card c JOIN FETCH c.cardProduct WHERE c.cardStatus = :cardStatus")
+    List<Card> findByCardStatus(@Param("cardStatus") Card.CardStatus cardStatus);
     
     /**
      * 카드번호 존재 여부 확인

@@ -16,6 +16,11 @@ public class CardIssueResponse {
      * 카드 상품명
      */
     private String cardProductName;
+
+    /**
+     * 카드 이미지
+     */
+    private String cardImage;
     
     /**
      * 발급 상태 (PENDING: 신청중, APPROVED: 승인, REJECTED: 거절)
