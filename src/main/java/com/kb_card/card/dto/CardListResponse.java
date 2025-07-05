@@ -96,6 +96,11 @@ public class CardListResponse {
          * 카드 상품명
          */
         private String cardName;
+
+        /**
+         * 카드 이미지
+         */
+        private String cardImage;
         
         /**
          * 본인/가족 구분 ("1":본인, "2":가족)

@@ -86,6 +86,11 @@ public class CardBillDetailResponse {
          * 카드 식별 값
          */
         private String cardValue;
+
+        /**
+         * 카드 이미지
+         */
+        private String cardImage;
         
         /**
          * 사용일자 (YYYYMMDD)

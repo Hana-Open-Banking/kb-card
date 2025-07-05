@@ -96,9 +96,14 @@ public class CardBillsResponse {
          * 카드 식별자
          */
         private String cardId;
+
+        /**
+         * 카드 이미지
+         */
+        private String cardImage;
         
         /**
-         * 청구금액 (-금액가능)
+         * 청구금액 (원/KRW) (-금액가능)
          */
         private String chargeAmt;
         
@@ -108,7 +113,7 @@ public class CardBillsResponse {
         private String settlementDay;
         
         /**
-         * 결제년월일 (실제 결제일)
+         * 결제년월일 (YYYYMMDD)
          */
         private String settlementDate;
         

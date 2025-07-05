@@ -247,6 +247,7 @@ public class CardUserService {
                 .cardId(String.valueOf(card.getId())) // Long id를 String으로 변환
                 .cardNumMasked(maskCardNumber(card.getCardNo())) // cardNo 필드 사용
                 .cardName(card.getCardName())
+                .cardImage(card.getCardProduct() != null ? card.getCardProduct().getCardImage() : null)
                 .cardMemberType("CREDIT".equals(card.getCardType()) ? "1" : "2") // String 타입으로 비교
                 .build();
     }
@@ -475,10 +476,12 @@ public class CardUserService {
      * CardBill 엔티티를 BillInfo DTO로 변환
      */
     private CardBillsResponse.BillInfo convertToBillInfo(CardBill cardBill) {
+        Card card = cardBill.getCard();
         return CardBillsResponse.BillInfo.builder()
                 .chargeMonth(cardBill.getChargeMonth())
                 .settlementSeqNo(cardBill.getSettlementSeqNo())
                 .cardId(String.valueOf(cardBill.getCard().getId()))
+                .cardImage(card != null && card.getCardProduct() != null ? card.getCardProduct().getCardImage() : null)
                 .chargeAmt(cardBill.getChargeAmt().toString())
                 .settlementDay(cardBill.getSettlementDay())
                 .settlementDate(cardBill.getSettlementDate())
@@ -573,8 +576,10 @@ public class CardUserService {
      * CardBillDetail 엔티티를 BillDetailInfo DTO로 변환
      */
     private CardBillDetailResponse.BillDetailInfo convertToBillDetailInfo(CardBillDetail billDetail) {
+        Card card = billDetail.getCardBill().getCard();
         return CardBillDetailResponse.BillDetailInfo.builder()
                 .cardValue(billDetail.getCardId())
+                .cardImage(card != null && card.getCardProduct() != null ? card.getCardProduct().getCardImage() : null)
                 .paidDate(billDetail.getPaidDate())
                 .paidTime(billDetail.getPaidTime())
                 .paidAmt(billDetail.getPaidAmt().toString())
